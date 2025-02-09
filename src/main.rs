@@ -124,14 +124,14 @@ impl FD {
 #[derive(Debug)]
 struct Proc {
     path: PathBuf,
-    number: usize,
+    pid: usize,
     exe: String,
     fd: Vec<FD>,
 }
 
 impl Proc {
     fn new(exe: String, path: PathBuf) -> Self {
-        let number = path
+        let pid = path
             .file_name()
             .unwrap()
             .to_str()
@@ -142,7 +142,7 @@ impl Proc {
             exe,
             path,
             fd: vec![],
-            number,
+            pid,
         };
         p.get_file_descriptors();
         p
@@ -171,7 +171,7 @@ impl Proc {
         let fd_write = self.find_biggest_fd(FDFlags::WriteOnly);
         println!(
             "[{}] {} {} > {}",
-            self.number,
+            self.pid,
             self.exe,
             fd_read.unwrap().name.as_ref().unwrap(),
             match fd_write {
@@ -200,9 +200,16 @@ impl Proc {
 const PROGS: &[&str] = &["cp", "mv", "dd", "cat"];
 
 fn main() -> io::Result<()> {
-    let procs = fs::read_dir("/proc")?
+    let procs = fs::read_dir("/proc")
+        .expect("procfs is not accessible")
         .filter_map(|x| x.ok())
-        .filter(|x| x.file_name().into_string().unwrap().parse::<u32>().is_ok())
+        .filter(|x| {
+            x.file_name()
+                .into_string()
+                .unwrap()
+                .parse::<usize>()
+                .is_ok()
+        })
         .collect::<Vec<_>>();
 
     let filtered_procs = procs
