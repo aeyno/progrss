@@ -3,6 +3,24 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Cli {
+    /// Monitor a specific PID
+    #[arg(short, long, value_delimiter = ',')]
+    pid: Option<Vec<usize>>,
+
+    /// Monitor a specific command
+    #[arg(short, long, value_delimiter = ',')]
+    command: Option<Vec<String>>,
+
+    /// Add a command to watch
+    #[arg(short, long, value_delimiter = ',')]
+    additional_command: Option<Vec<String>>,
+}
+
 fn get_proc_exe(proc: &Path) -> Option<String> {
     let exe = proc.join("exe");
 
@@ -200,23 +218,34 @@ impl Proc {
 const PROGS: &[&str] = &["cp", "mv", "dd", "cat"];
 
 fn main() -> io::Result<()> {
-    let procs = fs::read_dir("/proc")
-        .expect("procfs is not accessible")
-        .filter_map(|x| x.ok())
-        .filter(|x| {
-            x.file_name()
-                .into_string()
-                .unwrap()
-                .parse::<usize>()
-                .is_ok()
-        })
-        .collect::<Vec<_>>();
+    let cli = Cli::parse();
+
+    let mut progs_to_watch: Vec<&str> = if let Some(prog_list) = &cli.command {
+        Vec::from_iter(prog_list.iter().map(|x| x as &str))
+    } else {
+        PROGS.into()
+    };
+
+    if let Some(additional_commands) = &cli.additional_command {
+        progs_to_watch.extend(additional_commands.iter().map(|x| x as &str));
+    }
+
+    let procs: Vec<usize> = if let Some(pids) = cli.pid {
+        pids
+    } else {
+        fs::read_dir("/proc")
+            .expect("procfs is not accessible")
+            .filter_map(|x| x.ok())
+            .filter_map(|x| x.file_name().into_string().unwrap().parse::<usize>().ok())
+            .collect::<Vec<_>>()
+    };
 
     let filtered_procs = procs
         .iter()
-        .map(|x| (x.path(), get_proc_exe(&x.path())))
+        .map(|pid| PathBuf::from("/proc").join(format!("{}", pid)))
+        .map(|x| (x.clone(), get_proc_exe(&x)))
         .filter(|x| x.1.is_some())
-        .filter(|x| PROGS.iter().any(|p| *p == x.1.as_ref().unwrap()))
+        .filter(|x| progs_to_watch.iter().any(|p| *p == x.1.as_ref().unwrap()))
         .map(|x| Proc::new(x.1.unwrap(), x.0))
         .collect::<Vec<_>>();
 

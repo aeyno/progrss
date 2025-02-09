@@ -8,3 +8,4 @@ readme = "README.md"
 repository = "https://github.com/aeyno/progrss"
 
 [dependencies]
+clap = { version = "4.5.28", features = ["derive"] }
