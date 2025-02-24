@@ -1,3 +1,5 @@
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 use std::{
     fs, io,
     path::{Path, PathBuf},
@@ -19,6 +21,14 @@ struct Cli {
     /// Add a command to watch
     #[arg(short, long, value_delimiter = ',')]
     additional_command: Option<Vec<String>>,
+
+    /// Wait to estimate throughput
+    #[arg(short, long)]
+    wait: bool,
+
+    /// Wait a specified delay to estimate throughput
+    #[arg(short = 'W', long)]
+    wait_delay: Option<f64>,
 }
 
 fn get_proc_exe(proc: &Path) -> Option<String> {
@@ -48,16 +58,19 @@ fn format_size(size: u64) -> String {
     format!("{:.2}{}", rounded_size, UNITS[i])
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct FD {
     _id: usize,
+    fd_info: PathBuf,
     name: Option<String>,
     size: u64,
     pos: u64,
     flags: FDFlags,
+    speed: Option<u64>,
+    last_scan: Instant,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum FDFlags {
     ReadOnly,
     WriteOnly,
@@ -91,7 +104,7 @@ impl FD {
             return None;
         };
 
-        let (pos, flags_u64) = match Self::read_fdinfo(fd_info) {
+        let (pos, flags_u64) = match Self::read_fdinfo(fd_info.clone()) {
             Ok(v) => v,
             Err(_) => return None,
         };
@@ -106,7 +119,26 @@ impl FD {
             pos,
             size: fd_size,
             flags,
+            speed: None,
+            last_scan: Instant::now(),
+            fd_info,
         })
+    }
+
+    pub fn update(&mut self) -> bool {
+        let (pos, _) = match Self::read_fdinfo(self.fd_info.clone()) {
+            Ok(v) => v,
+            Err(_) => return false,
+        };
+
+        let elapsed = self.last_scan.elapsed();
+        let diff = pos - self.pos;
+        self.speed = Some((diff as f64 / elapsed.as_secs_f64()) as u64);
+
+        self.pos = pos;
+        self.last_scan = Instant::now();
+
+        true
     }
 
     fn read_fdinfo(path: PathBuf) -> io::Result<(u64, u64)> {
@@ -134,8 +166,12 @@ impl FD {
         }
     }
 
-    fn progress(&self) -> f32 {
+    pub fn progress(&self) -> f32 {
         (self.pos as f32) / self.size as f32
+    }
+
+    pub fn speed(&self) -> Option<u64> {
+        self.speed
     }
 }
 
@@ -184,6 +220,10 @@ impl Proc {
             .max_by_key(|x| x.size)
     }
 
+    fn update(&mut self) {
+        self.fd.retain_mut(|x| x.update());
+    }
+
     fn print(&self) {
         let fd_read = self.find_biggest_fd(FDFlags::ReadOnly);
         let fd_write = self.find_biggest_fd(FDFlags::WriteOnly);
@@ -198,13 +238,19 @@ impl Proc {
             }
         );
 
+        let speed = match fd_read.unwrap().speed() {
+            Some(s) => format!("{}/s", format_size(s)),
+            None => String::new(),
+        };
+
         if let Some(fd) = fd_read {
             if fd.size > 0 {
                 println!(
-                    "\t{:.2}% ({} / {})",
+                    "\t{:.2}% ({} / {}) {}",
                     fd_read.unwrap().progress() * 100.,
                     format_size(fd.pos),
-                    format_size(fd.size)
+                    format_size(fd.size),
+                    speed
                 );
             } else {
                 println!("\tUnknown progress")
@@ -240,7 +286,7 @@ fn main() -> io::Result<()> {
             .collect::<Vec<_>>()
     };
 
-    let filtered_procs = procs
+    let mut filtered_procs = procs
         .iter()
         .map(|pid| PathBuf::from("/proc").join(format!("{}", pid)))
         .map(|x| (x.clone(), get_proc_exe(&x)))
@@ -248,6 +294,19 @@ fn main() -> io::Result<()> {
         .filter(|x| progs_to_watch.iter().any(|p| *p == x.1.as_ref().unwrap()))
         .map(|x| Proc::new(x.1.unwrap(), x.0))
         .collect::<Vec<_>>();
+
+    if cli.wait || cli.wait_delay.is_some() {
+        let duration = match cli.wait_delay {
+            Some(v) => v,
+            None => 1.0,
+        };
+
+        sleep(Duration::from_secs_f64(duration));
+
+        for p in &mut filtered_procs {
+            p.update();
+        }
+    }
 
     for p in filtered_procs {
         p.print();

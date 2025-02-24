@@ -21,7 +21,7 @@ cargo run
 - [x] Basic informations about running commands (pid, open filedescriptors, percentage)
 - [x] Target specific PIDs (`-p --pid`)
 - [x] Target specific command (`-c --command`)
-- [ ] Throughput estimation
+- [x] Throughput estimation
 - [ ] Monitor mode
   - [ ] Monitor until running command terminates (`-m --monitor`)
   - [ ] Monitor continuously (`-M --monitor-continuously`)
