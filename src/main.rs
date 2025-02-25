@@ -221,23 +221,24 @@ impl Proc {
     fn print(&self) {
         let fd_read = self.find_biggest_fd(FDFlags::ReadOnly);
         let fd_write = self.find_biggest_fd(FDFlags::WriteOnly);
-        println!(
-            "[{}] {} {} > {}",
-            self.pid,
-            self.exe,
-            fd_read.unwrap().name.as_ref().unwrap(),
-            match fd_write {
-                Some(fd) => fd.name.as_ref().unwrap(),
-                None => "",
-            }
-        );
-
-        let speed = match fd_read.unwrap().speed() {
-            Some(s) => format!("{}/s", format_size(s)),
-            None => String::new(),
-        };
 
         if let Some(fd) = fd_read {
+            println!(
+                "[{}] {} {} > {}",
+                self.pid,
+                self.exe,
+                fd.name.as_ref().unwrap(),
+                match fd_write {
+                    Some(fd) => fd.name.as_ref().unwrap(),
+                    None => "",
+                }
+            );
+
+            let speed = match fd_read.unwrap().speed() {
+                Some(s) => format!("{}/s", format_size(s)),
+                None => String::new(),
+            };
+
             if fd.size > 0 {
                 println!(
                     "\t{:.2}% ({} / {}) {}",
