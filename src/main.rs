@@ -31,19 +31,6 @@ struct Cli {
     wait_delay: Option<f64>,
 }
 
-fn get_proc_exe(proc: &Path) -> Option<String> {
-    let exe = proc.join("exe");
-
-    let exe_path = fs::read_link(exe);
-
-    if let Ok(path) = exe_path {
-        if let Some(name) = path.file_name() {
-            return Some(name.to_str().unwrap_or("Unknown").into());
-        }
-    }
-    None
-}
-
 fn format_size(size: u64) -> String {
     const UNITS: &[&str] = &["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];
 
@@ -184,25 +171,32 @@ struct Proc {
 }
 
 impl Proc {
-    fn new(exe: String, path: PathBuf) -> Self {
-        let pid = path
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .parse::<usize>()
-            .unwrap();
-        let mut p = Proc {
+    fn new(pid: usize) -> Option<Self> {
+        let path = PathBuf::from("/proc").join(format!("{}", pid));
+        let exe = Self::get_proc_exe(&path)?;
+
+        Some(Proc {
             exe,
             path,
             fd: vec![],
             pid,
-        };
-        p.get_file_descriptors();
-        p
+        })
     }
 
-    fn get_file_descriptors(&mut self) {
+    fn get_proc_exe(proc: &Path) -> Option<String> {
+        let exe = proc.join("exe");
+
+        let exe_path = fs::read_link(exe);
+
+        if let Ok(path) = exe_path {
+            if let Some(name) = path.file_name() {
+                return Some(name.to_str().unwrap_or("Unknown").into());
+            }
+        }
+        None
+    }
+
+    pub fn get_file_descriptors(&mut self) {
         let fd_dir = self.path.join("fd");
         let fd = fs::read_dir(fd_dir)
             .unwrap()
@@ -328,19 +322,17 @@ fn main() -> io::Result<()> {
     };
 
     let mut filtered_procs = procs
-        .iter()
-        .map(|pid| PathBuf::from("/proc").join(format!("{}", pid)))
-        .map(|x| (x.clone(), get_proc_exe(&x)))
-        .filter(|x| x.1.is_some())
-        .filter(|x| progs_to_watch.iter().any(|p| *p == x.1.as_ref().unwrap()))
-        .map(|x| Proc::new(x.1.unwrap(), x.0))
+        .into_iter()
+        .filter_map(Proc::new)
+        .filter(|x| progs_to_watch.iter().any(|p| *p == x.exe))
+        .map(|mut x| {
+            x.get_file_descriptors();
+            x
+        })
         .collect::<Vec<_>>();
 
     if cli.wait || cli.wait_delay.is_some() {
-        let duration = match cli.wait_delay {
-            Some(v) => v,
-            None => 1.0,
-        };
+        let duration = cli.wait_delay.unwrap_or(1.0);
 
         sleep(Duration::from_secs_f64(duration));
 
