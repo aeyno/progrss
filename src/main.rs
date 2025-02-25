@@ -261,7 +261,48 @@ impl Proc {
     }
 }
 
-const PROGS: &[&str] = &["cp", "mv", "dd", "cat"];
+const PROGS: &[&str] = &[
+    "7z",
+    "7za",
+    "adb",
+    "bsdtar",
+    "bunzip2",
+    "bzcat",
+    "bzip2",
+    "cat",
+    "cksum",
+    "coreutils",
+    "cp",
+    "cut",
+    "dd",
+    "egrep",
+    "fgrep",
+    "gpg",
+    "grep",
+    "gunzip",
+    "gzip",
+    "lzcat",
+    "lzma",
+    "md5sum",
+    "mv",
+    "rg",
+    "rsync",
+    "scp",
+    "sha1sum",
+    "sha224sum",
+    "sha256sum",
+    "sha384sum",
+    "sha512sum",
+    "sort",
+    "split",
+    "tar",
+    "unlzma",
+    "unxz",
+    "unzip",
+    "xz",
+    "zcat",
+    "zip",
+];
 
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
