@@ -1,7 +1,7 @@
 [package]
 name = "progrss"
 version = "0.0.1"
-edition = "2021"
+edition = "2024"
 authors = ["Tom Gouville <contact@tomgouville.fr>"]
 description = "A clone of progress in Rust"
 readme = "README.md"
